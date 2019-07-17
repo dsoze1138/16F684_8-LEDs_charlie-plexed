@@ -23,35 +23,35 @@
  *                        DIP-14
  * 
  *           150 OHM
- *  DRV4 ----/\/\/\-------+-----------+-------------+-----------+
- *                        :           :             :           :
- *                        :           :             :           :
- *                       ---         ---            :           :
- *                 LED1  / \         \ / LED0       :           :
- *                       ---         ---            :           :
- *                        :           :             :           :
- *           150 OHM      :           :            ---         --- 
- *  DRV5 ----/\/\/\-------+-----------+       LED3 / \         \ / LED2
- *                        :           :            ---         --- 
- *                        :           :             :           :
- *                       ---         ---            :           :
- *                 LED5  / \         \ / LED4       :           :
- *                       ---         ---            :           :
- *                        :           :             :           :
- *           150 OHM      :           :             :           :
- *  DRV2 ----/\/\/\-------+-----------+-------------+-----------+
- *                        :           : 
- *                        :           :
- *                       ---         ---
- *                 LED7  / \         \ / LED6
- *                       ---         --- 
- *                        :           :
- *           150 OHM      :           :
- *  DRV1 ----/\/\/\-------+-----------+
+ *  DRV4 ----/\/\/\-------+---------+---------+---------+-----------------------------+---------+
+ *                        :         :         :         :                             :         :
+ *                        :         :         :         :                             :         :
+ *                       ---       ---       ---       ---                            :         :
+ *                  LED1 / \  LED0 \ /  LED3 / \  LED2 \ /                            :         :
+ *                       ---       ---       ---       ---                            :         :  
+ *                        :         :         :         :                             :         :
+ *           150 OHM      :         :         :         :                             :         :
+ *  DRV5 ----/\/\/\-------+---------+-------- : ------- : --------+---------+         :         :
+ *                        :         :         :         :         :         :         :         :
+ *                        :         :         :         :         :         :         :         :
+ *                       ---       ---        :         :         :         :        ---       --- 
+ *                  LED5 / \  LED4 \ /        :         :         :         :  LED11 / \ LED10 \ /
+ *                       ---       ---        :         :         :         :        ---       --- 
+ *                        :         :         :         :         :         :         :         :
+ *           150 OHM      :         :         :         :         :         :         :         :
+ *  DRV2 ----/\/\/\-------+---------+---------+---------+         :         :         :         :
+ *                        :         :                             :         :         :         :
+ *                        :         :                             :         :         :         :
+ *                       ---       ---                           ---       ---        :         :
+ *                  LED7 / \  LED6 \ /                      LED9 / \  LED8 \ /        :         :
+ *                       ---       ---                           ---       ---        :         :
+ *                        :         :                             :         :         :         :
+ *           150 OHM      :         :                             :         :         :         :
+ *  DRV1 ----/\/\/\-------+---------+-----------------------------+---------+---------+---------+
  *  
  * 
- *  POT ----/\/\/\---+-------+
- *            1K     :       :
+ *  POT -----/\/\/\--+-------+
+ *             1K    :       :
  *                   :      --- 1nF
  *                   :      ---
  *                   v       :
@@ -82,7 +82,9 @@
 /*
  * Global data
  */
-volatile unsigned char gLEDs;
+volatile uint8_t gLEDs_0_to_7;
+volatile uint8_t gLEDs_8_to_11;
+volatile uint8_t gTicks;
 
 void main(void) 
 {
@@ -103,7 +105,9 @@ void main(void)
     TMR0 = 0;
     TMR0IF = 0;
     TMR0IE = 1;
-    gLEDs = 0b00000000;
+    gLEDs_0_to_7  = 0b00000000;
+    gLEDs_8_to_11 = 0b00000000;
+    gTicks = 0;
     GIE = 1;
     /*
      * Initialize ADC on channel 0
@@ -126,7 +130,12 @@ void main(void)
     {
         ADCON0bits.GO = 1;      /* Start an ADC conversion */
         while(ADCON0bits.GO);   /* Wait for ADC conversion to finish */
-        gLEDs = ADRESH;         /* Put ADC value in LED7 to LED0 */
+        gLEDs_0_to_7 = ADRESH;         /* Put ADC value in LED7 to LED0 */
+        if(gTicks == 0)
+        {
+            gTicks = 250;
+            if(((gLEDs_8_to_11 <<= 1) & 0x0F) == 0) gLEDs_8_to_11 = 1;
+        }
     }
 }
 /*
@@ -135,11 +144,12 @@ void main(void)
 void __interrupt() ISR_handler(void)
 {
     static uint8_t Timer0Ticks = 0;
-    static unsigned char State = 8;
-    unsigned char OutBits, HighBits;
+    static uint8_t State = 8;
+    uint8_t OutBits, HighBits;
 
     if (TMR0IE && TMR0IF) {  /* TIMER0 asserts and interrupt every 1.024 milliseconds */
         TMR0IF=0;
+        if(gTicks != 0) gTicks--;
         if (Timer0Ticks == 0) { /* Select another LED every second TIMER0 interrupt */
             Timer0Ticks = 1;    /* to make LEDs a little brighter make this number larger until you don't like the flickering */
 
@@ -148,8 +158,40 @@ void __interrupt() ISR_handler(void)
 
             switch (--State)
             {
+            case 11:
+                if (gLEDs_8_to_11 & 0x08)
+                {
+                    HighBits |= (1 << 1); /* Drive LED11, DRV4=L DRV1=H */
+                    OutBits = ~((1<<1)|(1<<4));
+                }
+                break;
+
+            case 10:
+                if (gLEDs_8_to_11 & 0x04)
+                {
+                    HighBits |= (1 << 4); /* Drive LED10, DRV4=H DRV1=L */
+                    OutBits = ~((1<<1)|(1<<4));
+                }
+                break;
+
+            case 9:
+                if (gLEDs_8_to_11 & 0x02)
+                {
+                    HighBits |= (1 << 1); /* Drive LED9, DRV1=H DRV5=L */
+                    OutBits = ~((1<<1)|(1<<5));
+                }
+                break;
+
+            case 8:
+                if (gLEDs_8_to_11 & 0x01)
+                {
+                    HighBits |= (1 << 5); /* Drive LED8, DRV1=L DRV5=H */
+                    OutBits = ~((1<<1)|(1<<5));
+                }
+                break;
+
             case 7:
-                if (gLEDs & 0x80)
+                if (gLEDs_0_to_7 & 0x80)
                 {
                     HighBits |= (1 << 1); /* Drive LED7, DRV1=H DRV2=L */
                     OutBits = ~((1<<1)|(1<<2));
@@ -157,7 +199,7 @@ void __interrupt() ISR_handler(void)
                 break;
 
             case 6:
-                if (gLEDs & 0x40)
+                if (gLEDs_0_to_7 & 0x40)
                 {
                     HighBits |= (1 << 2); /* Drive LED6, DRV1=L DRV2=H */
                     OutBits = ~((1<<1)|(1<<2));
@@ -165,7 +207,7 @@ void __interrupt() ISR_handler(void)
                 break;
 
             case 5:
-                if (gLEDs & 0x20)
+                if (gLEDs_0_to_7 & 0x20)
                 {
                     HighBits |= (1 << 2); /* Drive LED5, DRV5=L DRV2=H */
                     OutBits = ~((1<<5)|(1<<2));
@@ -173,7 +215,7 @@ void __interrupt() ISR_handler(void)
                 break;
 
             case 4:
-                if (gLEDs & 0x10)
+                if (gLEDs_0_to_7 & 0x10)
                 {
                     HighBits |= (1 << 5); /* Drive LED4, DRV5=H DRV2=L */
                     OutBits = ~((1<<5)|(1<<2));
@@ -181,7 +223,7 @@ void __interrupt() ISR_handler(void)
                 break;
 
             case 3:
-                if (gLEDs & 0x08)
+                if (gLEDs_0_to_7 & 0x08)
                 {
                     HighBits |= (1 << 2); /* Drive LED3, DRV4=L DRV2=H */
                     OutBits = ~((1<<4)|(1<<2));
@@ -189,14 +231,14 @@ void __interrupt() ISR_handler(void)
                 break;
 
             case 2:
-                if (gLEDs & 0x04)
+                if (gLEDs_0_to_7 & 0x04)
                 {
                     HighBits |= (1 << 4); /* Drive LED2, DRV4=H DRV2=L */
                     OutBits = ~((1<<4)|(1<<2));
                 }
                 break;
             case 1:
-                if (gLEDs & 0x02)
+                if (gLEDs_0_to_7 & 0x02)
                 {
                     HighBits |= (1 << 5); /* Drive LED1, DRV4=L DRV5=H */
                     OutBits = ~((1<<4)|(1<<5));
@@ -204,12 +246,12 @@ void __interrupt() ISR_handler(void)
                 break;
 
             default:
-                if (gLEDs & 0x01)
+                if (gLEDs_0_to_7 & 0x01)
                 {
                     HighBits |= (1 << 4); /* Drive LED0, DRV4=H DRV5=L */
                     OutBits = ~((1<<4)|(1<<5));
                 }
-                State = 8;
+                State = 12;
             }
 
             TRISA |= ((1<<5)|(1<<4)|(1<<2)|(1<<1)); /* Turn off all LED output drivers */
