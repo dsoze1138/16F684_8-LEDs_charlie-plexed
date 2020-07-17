@@ -2,11 +2,12 @@
  * File:   main.c
  * Author: dan1138
  * Target: PIC16F684
- * Compiler: XC8 v2.00
+ * Compiler: XC8 v2.20
+ * IDE: MPLABX v5.25
  * 
  * Description:
  * 
- *  Display the upper 8-bits of the ADC conversion 
+ *  Display the upper 12-bits of the ADC conversion 
  *  from analog input from RA0 on 8 charlieplexed LEDs 
  *  connected to outputs RA1,RA2,RA4,RA5.
  *
@@ -93,7 +94,7 @@ void main(void)
      */
     INTCON = 0;
     OSCCON = 0x70;      /* Select 8MHz system oscillator */
-    __delay_ms(500);    /* Give ICSP device programming tool a chance to get the PICs attention */
+    __delay_ms(500);    /* Give ISCP device programming tool a chance to get the PICs attention */
 
     TRISA = 0xFF;
     TRISC = 0x00;
@@ -130,12 +131,8 @@ void main(void)
     {
         ADCON0bits.GO = 1;      /* Start an ADC conversion */
         while(ADCON0bits.GO);   /* Wait for ADC conversion to finish */
-        gLEDs_0_to_7 = ADRESH;         /* Put ADC value in LED7 to LED0 */
-        if(gTicks == 0)
-        {
-            gTicks = 250;
-            if(((gLEDs_8_to_11 <<= 1) & 0x0F) == 0) gLEDs_8_to_11 = 1;
-        }
+        gLEDs_0_to_7  = ADRESH; /* Put High 8-bits of ADC value in LED7 to LED0 */
+        gLEDs_8_to_11 = ADRESL >> 6; /* Put Low 2-bits of ADC value in LED8 to LED9 */
     }
 }
 /*
